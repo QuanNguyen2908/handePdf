@@ -10,6 +10,10 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 
+// Get current file directory
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
 // Thiết lập Node.js environment cho pdfjs-dist
 pdfjsLib.isNodeJS = true;
 pdfjsLib.createCanvas = function(width, height) {
@@ -18,6 +22,14 @@ pdfjsLib.createCanvas = function(width, height) {
 
 const app = express();
 const upload = multer({ dest: 'uploads/' });
+
+// Serve static files
+app.use(express.static('public'));
+
+// Serve index.html
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -73,10 +85,25 @@ async function extractTextByPage(dataBuffer) {
 
 app.post('/process-pdf', upload.single('pdf'), async (req, res) => {
   try {
+    // Kiểm tra xem có file được upload không
+    if (!req.file) {
+      return res.status(400).json({ error: 'No PDF file uploaded.' });
+    }
+
+    // Kiểm tra mime type của file
+    if (req.file.mimetype !== 'application/pdf') {
+      // Xóa file không hợp lệ
+      fs.unlinkSync(req.file.path);
+      return res.status(400).json({ error: 'Uploaded file must be a PDF.' });
+    }
+
     const prompt = req.body.prompt;
     const pdfPath = req.file.path;
-    if (!prompt || !pdfPath) {
-      return res.status(400).json({ error: 'Missing prompt or PDF file.' });
+    
+    if (!prompt) {
+      // Xóa file nếu không có prompt
+      fs.unlinkSync(pdfPath);
+      return res.status(400).json({ error: 'Missing prompt.' });
     }
 
     // 1. Gọi OpenAI để lấy danh sách chuỗi cần kiểm tra
